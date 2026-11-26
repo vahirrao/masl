@@ -1,0 +1,346 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role-based access control and shop assignments",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Auth UID" },
+        "name": { "type": "string", "maxLength": 100, "description": "Full name" },
+        "email": { "type": "string", "format": "email", "maxLength": 120, "description": "Email address" },
+        "role": {
+          "type": "string",
+          "enum": [
+            "super_admin",
+            "technova_admin",
+            "plant_manager",
+            "fabrication_manager",
+            "shop_supervisor",
+            "plant_engineer",
+            "technician",
+            "accounts_finance",
+            "maintenance_coordinator"
+          ]
+        },
+        "assignedShops": {
+          "type": "array",
+          "description": "List of shop codes user is assigned to"
+        },
+        "department": { "type": "string", "maxLength": 80 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "name", "email", "role", "status"]
+    },
+    "Shop": {
+      "title": "Shop",
+      "description": "Manufacturing shop at Mahindra Chakan plant",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 100 },
+        "code": { "type": "string", "maxLength": 30 },
+        "area": { "type": "string", "maxLength": 100 },
+        "active": { "type": "boolean" },
+        "supervisorName": { "type": "string", "maxLength": 100 },
+        "targetTAT": { "type": "number", "description": "Target turn-around time in days" }
+      },
+      "required": ["id", "name", "code", "active"]
+    },
+    "Asset": {
+      "title": "Asset",
+      "description": "Trolleys, fixtures, and material handling equipment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "qrCode": { "type": "string", "maxLength": 100 },
+        "trolleyNumber": { "type": "string", "maxLength": 60 },
+        "name": { "type": "string", "maxLength": 120 },
+        "category": { "type": "string", "maxLength": 60 },
+        "trolleyType": { "type": "string", "maxLength": 80 },
+        "shopCode": { "type": "string", "maxLength": 30 },
+        "location": { "type": "string", "maxLength": 100 },
+        "partNumber": { "type": "string", "maxLength": 60 },
+        "dimensions": { "type": "string", "maxLength": 80 },
+        "loadCapacityKg": { "type": "number" },
+        "condition": { "type": "string", "enum": ["excellent", "good", "needs_repair", "critical_damage", "quarantined_unsafe"] },
+        "operationalStatus": { "type": "string", "enum": ["active", "under_maintenance", "out_of_service", "scrapped"] },
+        "safetyStatus": { "type": "string", "enum": ["safe", "pending_inspection", "unsafe_locked"] },
+        "lastMaintenanceDate": { "type": "string" },
+        "nextMaintenanceDueDate": { "type": "string" },
+        "maintenanceQuarter": { "type": "string", "enum": ["Q1", "Q2", "Q3", "Q4"] },
+        "photoUrl": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "qrCode", "trolleyNumber", "name", "shopCode", "condition", "operationalStatus"]
+    },
+    "WorkOrder": {
+      "title": "WorkOrder",
+      "description": "Fabrication and repair work order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workOrderNumber": { "type": "string", "maxLength": 50 },
+        "shopCode": { "type": "string", "maxLength": 30 },
+        "shopName": { "type": "string", "maxLength": 100 },
+        "location": { "type": "string", "maxLength": 100 },
+        "requesterUid": { "type": "string" },
+        "requesterName": { "type": "string", "maxLength": 100 },
+        "assetId": { "type": "string", "maxLength": 100 },
+        "trolleyNumber": { "type": "string", "maxLength": 60 },
+        "trolleyType": { "type": "string", "maxLength": 80 },
+        "partNumber": { "type": "string", "maxLength": 60 },
+        "jobDescription": { "type": "string", "maxLength": 1000 },
+        "activityType": {
+          "type": "string",
+          "enum": ["Fabrication", "Welding", "Painting", "Cleaning", "Locking", "Resting", "Repair", "Modification", "General Maintenance"]
+        },
+        "quantity": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 20 },
+        "priority": { "type": "string", "enum": ["Normal", "High", "Urgent", "Critical"] },
+        "status": {
+          "type": "string",
+          "enum": [
+            "Draft",
+            "Submitted",
+            "Under Review",
+            "Awaiting PE Approval",
+            "Approved",
+            "Rejected",
+            "Assigned",
+            "Scheduled",
+            "In Progress",
+            "On Hold",
+            "Awaiting Material",
+            "Awaiting Inspection",
+            "Rework Required",
+            "Completed",
+            "Closed",
+            "Cancelled"
+          ]
+        },
+        "estimatedCost": { "type": "number" },
+        "actualCost": { "type": "number" },
+        "rateCardCode": { "type": "string", "maxLength": 50 },
+        "requiredDate": { "type": "string" },
+        "scheduledDate": { "type": "string" },
+        "startedAt": { "type": "string" },
+        "completedAt": { "type": "string" },
+        "turnaroundDays": { "type": "number" },
+        "assignedTechnicianUids": { "type": "array" },
+        "assignedTechnicianNames": { "type": "array" },
+        "peApproved": { "type": "boolean" },
+        "peApprovalNotes": { "type": "string", "maxLength": 500 },
+        "qualityInspectionPassed": { "type": "boolean" },
+        "beforePhotoUrls": { "type": "array" },
+        "duringPhotoUrls": { "type": "array" },
+        "afterPhotoUrls": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "workOrderNumber", "shopCode", "jobDescription", "activityType", "priority", "status"]
+    },
+    "WorkOrderLog": {
+      "title": "WorkOrderLog",
+      "description": "Progress updates, remarks, and actions on a work order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workOrderId": { "type": "string" },
+        "action": { "type": "string", "maxLength": 100 },
+        "statusFrom": { "type": "string", "maxLength": 50 },
+        "statusTo": { "type": "string", "maxLength": 50 },
+        "remarks": { "type": "string", "maxLength": 1000 },
+        "performedByUid": { "type": "string" },
+        "performedByName": { "type": "string", "maxLength": 100 },
+        "performedByRole": { "type": "string", "maxLength": 50 },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "workOrderId", "action", "performedByUid", "timestamp"]
+    },
+    "RateCard": {
+      "title": "RateCard",
+      "description": "Pre-approved activity-wise rates for Technova contract at Mahindra Chakan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "activityName": { "type": "string", "maxLength": 80 },
+        "code": { "type": "string", "maxLength": 40 },
+        "category": { "type": "string", "maxLength": 60 },
+        "rate": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 30 },
+        "description": { "type": "string", "maxLength": 500 },
+        "effectiveDate": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "activityName", "code", "rate", "unit", "active"]
+    },
+    "PreventiveMaintenance": {
+      "title": "PreventiveMaintenance",
+      "description": "Quarterly PM cycle record for trolleys and assets",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "assetId": { "type": "string" },
+        "trolleyNumber": { "type": "string", "maxLength": 60 },
+        "shopCode": { "type": "string", "maxLength": 30 },
+        "quarter": { "type": "string", "enum": ["Q1", "Q2", "Q3", "Q4"] },
+        "year": { "type": "number" },
+        "scheduledDate": { "type": "string" },
+        "completedDate": { "type": "string" },
+        "assignedTeam": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["Scheduled", "In Progress", "Completed", "Overdue"] },
+        "checklist": { "type": "array" },
+        "technicianRemarks": { "type": "string", "maxLength": 800 },
+        "verifiedBySupervisor": { "type": "string", "maxLength": 100 },
+        "conditionPostPM": { "type": "string", "enum": ["excellent", "good", "rework_needed"] }
+      },
+      "required": ["id", "assetId", "trolleyNumber", "shopCode", "quarter", "year", "status"]
+    },
+    "ManpowerRecord": {
+      "title": "ManpowerRecord",
+      "description": "Technician and fabricator profile, skills, attendance and assignment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeCode": { "type": "string", "maxLength": 40 },
+        "name": { "type": "string", "maxLength": 100 },
+        "designation": { "type": "string", "maxLength": 80 },
+        "primarySkill": { "type": "string", "maxLength": 60 },
+        "certifications": { "type": "array" },
+        "assignedShop": { "type": "string", "maxLength": 30 },
+        "currentShift": { "type": "string", "enum": ["Shift A (Morning)", "Shift B (Evening)", "Shift C (Night)", "General"] },
+        "attendanceStatus": { "type": "string", "enum": ["Present", "On Leave", "Overtime", "Absent"] },
+        "activeWorkOrders": { "type": "number" },
+        "safetyInducted": { "type": "boolean" },
+        "contactNumber": { "type": "string", "maxLength": 20 }
+      },
+      "required": ["id", "employeeCode", "name", "designation", "attendanceStatus"]
+    },
+    "MHEEquipment": {
+      "title": "MHEEquipment",
+      "description": "Forklift, Tow Truck, and Hand Pallet Truck maintenance records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "equipmentCode": { "type": "string", "maxLength": 40 },
+        "type": { "type": "string", "enum": ["Forklift", "Tow Truck", "Hand Pallet Truck (HPT)"] },
+        "model": { "type": "string", "maxLength": 80 },
+        "capacityTons": { "type": "number" },
+        "shopCode": { "type": "string", "maxLength": 30 },
+        "currentStatus": { "type": "string", "enum": ["Operational", "Under Service", "Breakdown", "Decommissioned"] },
+        "lastServiceDate": { "type": "string" },
+        "nextServiceDueDate": { "type": "string" },
+        "downtimeHours": { "type": "number" },
+        "totalRepairs": { "type": "number" }
+      },
+      "required": ["id", "equipmentCode", "type", "shopCode", "currentStatus"]
+    },
+    "SafetyIncident": {
+      "title": "SafetyIncident",
+      "description": "Industrial safety observation, near-miss, or defective asset lockout",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "incidentNumber": { "type": "string", "maxLength": 40 },
+        "shopCode": { "type": "string", "maxLength": 30 },
+        "location": { "type": "string", "maxLength": 100 },
+        "severity": { "type": "string", "enum": ["Low", "Medium", "High", "Critical Unsafe"] },
+        "description": { "type": "string", "maxLength": 1000 },
+        "affectedAssetId": { "type": "string", "maxLength": 100 },
+        "actionTaken": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["Open", "Investigating", "Corrective Action", "Resolved & Cleared"] },
+        "reportedBy": { "type": "string", "maxLength": 100 },
+        "reportedAt": { "type": "string" },
+        "clearedAt": { "type": "string" }
+      },
+      "required": ["id", "incidentNumber", "shopCode", "severity", "description", "status"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System and SLA alerts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "recipientUid": { "type": "string" },
+        "title": { "type": "string", "maxLength": 120 },
+        "message": { "type": "string", "maxLength": 500 },
+        "type": { "type": "string", "enum": ["work_order", "sla_breach", "pe_approval", "pm_due", "safety_lockout", "billing"] },
+        "link": { "type": "string", "maxLength": 200 },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "message", "type", "read", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable audit trail for compliance and operations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "entityType": { "type": "string", "maxLength": 50 },
+        "entityId": { "type": "string", "maxLength": 100 },
+        "action": { "type": "string", "maxLength": 80 },
+        "performedByUid": { "type": "string" },
+        "performedByName": { "type": "string", "maxLength": 100 },
+        "performedByRole": { "type": "string", "maxLength": 50 },
+        "details": { "type": "string", "maxLength": 1000 },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "entityType", "entityId", "action", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile with role, authorization, and assigned shops"
+    },
+    "/shops/{shopId}": {
+      "schema": "Shop",
+      "description": "15+ Mahindra Chakan manufacturing shops"
+    },
+    "/assets/{assetId}": {
+      "schema": "Asset",
+      "description": "Trolleys, fixtures, and material handling asset registry"
+    },
+    "/work_orders/{workOrderId}": {
+      "schema": "WorkOrder",
+      "description": "Fabrication, welding, repair work orders"
+    },
+    "/work_order_logs/{logId}": {
+      "schema": "WorkOrderLog",
+      "description": "Audit and status history for each work order"
+    },
+    "/rate_cards/{rateCardId}": {
+      "schema": "RateCard",
+      "description": "Pre-approved activity-wise rates for fabrication and maintenance"
+    },
+    "/preventive_maintenance/{pmId}": {
+      "schema": "PreventiveMaintenance",
+      "description": "Quarterly PM cycles and compliance records"
+    },
+    "/manpower/{manpowerId}": {
+      "schema": "ManpowerRecord",
+      "description": "On-site Technova team members, skills, shifts, attendance"
+    },
+    "/mhe_equipment/{equipmentId}": {
+      "schema": "MHEEquipment",
+      "description": "Forklift, Tow Truck, and HPT equipment registry and maintenance"
+    },
+    "/safety_incidents/{incidentId}": {
+      "schema": "SafetyIncident",
+      "description": "Safety observations, defect quarantine, and clearance"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "In-app notifications and SLA escalations"
+    },
+    "/audit_logs/{auditId}": {
+      "schema": "AuditLog",
+      "description": "Immutable operational and financial audit logs"
+    }
+  }
+}

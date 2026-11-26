@@ -1,0 +1,10 @@
+{
+  "name": "MASL - Trolley Lifecycle \u0026 Maintenance Tracker",
+  "description": "Industrial Trolley Lifecycle, Asset Tracking \u0026 Preventive Maintenance System for Mahindra Auto Steel Private Limited (MASL)",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

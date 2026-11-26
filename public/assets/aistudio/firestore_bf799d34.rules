@@ -1,0 +1,142 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'vaibhavbackupphoto1@gmail.com' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin'
+      );
+    }
+
+    function isTechnovaAdmin() {
+      return isSuperAdmin() || (
+        isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'technova_admin'
+      );
+    }
+
+    function isPlantManager() {
+      return isTechnovaAdmin() || (
+        isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'plant_manager'
+      );
+    }
+
+    // USERS COLLECTION
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.auth.uid == userId || isTechnovaAdmin()
+      ) && incoming().uid == userId;
+      allow update: if isSignedIn() && (
+        isSuperAdmin() ||
+        (request.auth.uid == userId && !incoming().diff(existing()).affectedKeys().hasAny(['role']))
+      );
+      allow delete: if isSuperAdmin();
+    }
+
+    // SHOPS MASTER DATA
+    match /shops/{shopId} {
+      allow read: if isSignedIn();
+      allow write: if isTechnovaAdmin();
+    }
+
+    // ASSET REGISTRY & QR CODES
+    match /assets/{assetId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(assetId) && incoming().id == assetId;
+      allow update: if isSignedIn() && isValidId(assetId);
+      allow delete: if isTechnovaAdmin();
+    }
+
+    // WORK ORDERS
+    match /work_orders/{workOrderId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(workOrderId);
+      allow update: if isSignedIn() && isValidId(workOrderId);
+      allow delete: if isTechnovaAdmin();
+    }
+
+    // WORK ORDER PROGRESS LOGS
+    match /work_order_logs/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(logId);
+      allow update: if false; // Append-only immutable log
+      allow delete: if isSuperAdmin();
+    }
+
+    // RATE CARDS
+    match /rate_cards/{rateCardId} {
+      allow read: if isSignedIn();
+      allow write: if isTechnovaAdmin();
+    }
+
+    // PREVENTIVE MAINTENANCE
+    match /preventive_maintenance/{pmId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(pmId);
+      allow delete: if isTechnovaAdmin();
+    }
+
+    // MANPOWER MANAGEMENT
+    match /manpower/{manpowerId} {
+      allow read: if isSignedIn();
+      allow create, update: if isTechnovaAdmin() || (
+        isSignedIn() && isValidId(manpowerId)
+      );
+      allow delete: if isTechnovaAdmin();
+    }
+
+    // FORKLIFT / TOW TRUCK / HAND PALLET TRUCK MHE
+    match /mhe_equipment/{equipmentId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(equipmentId);
+      allow delete: if isTechnovaAdmin();
+    }
+
+    // SAFETY & UNSECURE ASSET INCIDENTS
+    match /safety_incidents/{incidentId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(incidentId);
+      allow delete: if isTechnovaAdmin();
+    }
+
+    // NOTIFICATIONS
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(notificationId);
+      allow update: if isSignedIn() && isValidId(notificationId);
+      allow delete: if isSignedIn();
+    }
+
+    // AUDIT LOGS - Immutable compliance trail
+    match /audit_logs/{auditId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(auditId);
+      allow update: if false; // strictly immutable
+      allow delete: if false; // strictly immutable
+    }
+  }
+}

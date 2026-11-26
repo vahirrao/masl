@@ -1,0 +1,415 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core Identity & Primitive Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOptString(data, key, maxLen) {
+      return !(key in data) || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    function isOptBool(data, key) {
+      return !(key in data) || data[key] is bool;
+    }
+
+    function isOptNumber(data, key) {
+      return !(key in data) || data[key] is number;
+    }
+
+    function isOptBoundedList(data, key, maxLen) {
+      return !(key in data) || (data[key] is list && data[key].size() <= maxLen);
+    }
+
+    function isBootstrapAdmin() {
+      return isVerified() && (
+        request.auth.token.email == 'ahirrao.vaibhav@gmail.com' ||
+        request.auth.token.email == 'uat-admin@masl.com'
+      );
+    }
+
+    function isSuperAdmin() {
+      return isBootstrapAdmin() || (
+        isVerified() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin'
+      );
+    }
+
+    function isPlantAdmin() {
+      return isSuperAdmin() || (
+        isVerified() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['plant_manager', 'maintenance_head']
+      );
+    }
+
+    // Validation Blueprints
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'role', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'name', 'email', 'role', 'assignedShops', 'department', 'phone', 'status', 'createdAt', 'updatedAt']) &&
+        data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+        data.email is string && data.email.size() > 0 && data.email.size() <= 120 &&
+        data.role in ['super_admin', 'plant_manager', 'maintenance_head', 'shop_supervisor', 'plant_engineer', 'technician', 'operator'] &&
+        data.status in ['active', 'inactive'] &&
+        data.createdAt is string && data.createdAt.size() <= 40 &&
+        data.updatedAt is string && data.updatedAt.size() <= 40 &&
+        isOptBoundedList(data, 'assignedShops', 30) &&
+        isOptString(data, 'department', 80) &&
+        isOptString(data, 'phone', 20);
+    }
+
+    function isValidShop(data) {
+      return data.keys().hasAll(['id', 'name', 'code', 'active']) &&
+        data.keys().hasOnly(['id', 'name', 'code', 'area', 'active', 'supervisorName', 'targetTAT']) &&
+        isValidId(data.id) &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+        data.code is string && data.code.size() > 0 && data.code.size() <= 30 &&
+        data.active is bool &&
+        isOptString(data, 'area', 100) &&
+        isOptString(data, 'supervisorName', 100) &&
+        isOptNumber(data, 'targetTAT');
+    }
+
+    function isValidAsset(data) {
+      return data.keys().hasAll(['id', 'qrCode', 'trolleyNumber', 'name', 'shopCode', 'condition', 'operationalStatus', 'safetyStatus', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'qrCode', 'trolleyNumber', 'name', 'category', 'trolleyType', 'shopCode', 'location', 'partNumber', 'dimensions', 'loadCapacityKg', 'condition', 'operationalStatus', 'safetyStatus', 'commissioningDate', 'lastMaintenanceDate', 'nextMaintenanceDueDate', 'maintenanceQuarter', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        data.qrCode is string && data.qrCode.size() > 0 && data.qrCode.size() <= 100 &&
+        data.trolleyNumber is string && data.trolleyNumber.size() > 0 && data.trolleyNumber.size() <= 60 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+        data.shopCode is string && data.shopCode.size() > 0 && data.shopCode.size() <= 30 &&
+        data.condition in ['excellent', 'good', 'needs_repair', 'critical_damage', 'quarantined_unsafe'] &&
+        data.operationalStatus in ['active', 'under_maintenance', 'out_of_service', 'scrapped'] &&
+        data.safetyStatus in ['safe', 'pending_inspection', 'unsafe_locked'] &&
+        data.createdAt is string && data.createdAt.size() <= 40 &&
+        data.updatedAt is string && data.updatedAt.size() <= 40 &&
+        isOptString(data, 'category', 60) &&
+        isOptString(data, 'trolleyType', 80) &&
+        isOptString(data, 'location', 100) &&
+        isOptString(data, 'partNumber', 60) &&
+        isOptString(data, 'dimensions', 80) &&
+        isOptNumber(data, 'loadCapacityKg') &&
+        isOptString(data, 'commissioningDate', 40) &&
+        isOptString(data, 'lastMaintenanceDate', 40) &&
+        isOptString(data, 'nextMaintenanceDueDate', 40) &&
+        (!( 'maintenanceQuarter' in data ) || data.maintenanceQuarter in ['Q1', 'Q2', 'Q3', 'Q4']);
+    }
+
+    function isValidWorkOrder(data) {
+      return data.keys().hasAll(['id', 'workOrderNumber', 'shopCode', 'requesterUid', 'jobDescription', 'activityType', 'priority', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'workOrderNumber', 'shopCode', 'shopName', 'location', 'requesterUid', 'requesterName', 'assetId', 'trolleyNumber', 'trolleyType', 'partNumber', 'failureType', 'isBreakdown', 'jobDescription', 'activityType', 'quantity', 'unit', 'priority', 'status', 'requiredDate', 'scheduledDate', 'startedAt', 'completedAt', 'turnaroundDays', 'assignedTechnicianUids', 'assignedTechnicianNames', 'peApproved', 'peApprovalNotes', 'qualityInspectionPassed', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        data.workOrderNumber is string && data.workOrderNumber.size() > 0 && data.workOrderNumber.size() <= 50 &&
+        data.shopCode is string && data.shopCode.size() > 0 && data.shopCode.size() <= 30 &&
+        data.requesterUid is string && data.requesterUid.size() > 0 && data.requesterUid.size() <= 128 &&
+        data.jobDescription is string && data.jobDescription.size() > 0 && data.jobDescription.size() <= 1000 &&
+        data.activityType in ['Fabrication', 'Welding', 'Painting', 'Cleaning', 'Locking', 'Resting', 'Repair', 'Modification', 'General Maintenance'] &&
+        data.priority in ['Normal', 'High', 'Urgent', 'Critical'] &&
+        data.status in ['Draft', 'Submitted', 'Under Review', 'Awaiting PE Approval', 'Approved', 'Rejected', 'Assigned', 'Scheduled', 'In Progress', 'On Hold', 'Awaiting Material', 'Awaiting Inspection', 'Rework Required', 'Completed', 'Closed', 'Cancelled'] &&
+        data.createdAt is string && data.createdAt.size() <= 40 &&
+        data.updatedAt is string && data.updatedAt.size() <= 40 &&
+        isOptString(data, 'shopName', 100) &&
+        isOptString(data, 'location', 100) &&
+        isOptString(data, 'requesterName', 100) &&
+        isOptString(data, 'assetId', 128) &&
+        isOptString(data, 'trolleyNumber', 60) &&
+        isOptString(data, 'trolleyType', 80) &&
+        isOptString(data, 'partNumber', 60) &&
+        isOptString(data, 'failureType', 80) &&
+        isOptBool(data, 'isBreakdown') &&
+        isOptNumber(data, 'quantity') &&
+        isOptString(data, 'unit', 20) &&
+        isOptString(data, 'requiredDate', 40) &&
+        isOptString(data, 'scheduledDate', 40) &&
+        isOptString(data, 'startedAt', 40) &&
+        isOptString(data, 'completedAt', 40) &&
+        isOptNumber(data, 'turnaroundDays') &&
+        isOptBoundedList(data, 'assignedTechnicianUids', 20) &&
+        isOptBoundedList(data, 'assignedTechnicianNames', 20) &&
+        isOptBool(data, 'peApproved') &&
+        isOptString(data, 'peApprovalNotes', 500) &&
+        isOptBool(data, 'qualityInspectionPassed');
+    }
+
+    function isValidWorkOrderLog(data) {
+      return data.keys().hasAll(['id', 'workOrderId', 'action', 'performedByUid', 'timestamp']) &&
+        data.keys().hasOnly(['id', 'workOrderId', 'assetId', 'trolleyNumber', 'action', 'statusFrom', 'statusTo', 'remarks', 'performedByUid', 'performedByName', 'performedByRole', 'timestamp']) &&
+        isValidId(data.id) &&
+        data.workOrderId is string && data.workOrderId.size() > 0 && data.workOrderId.size() <= 128 &&
+        data.action is string && data.action.size() > 0 && data.action.size() <= 100 &&
+        data.performedByUid is string && data.performedByUid.size() > 0 && data.performedByUid.size() <= 128 &&
+        data.timestamp is string && data.timestamp.size() <= 40 &&
+        isOptString(data, 'assetId', 128) &&
+        isOptString(data, 'trolleyNumber', 60) &&
+        isOptString(data, 'statusFrom', 50) &&
+        isOptString(data, 'statusTo', 50) &&
+        isOptString(data, 'remarks', 1000) &&
+        isOptString(data, 'performedByName', 100) &&
+        isOptString(data, 'performedByRole', 50);
+    }
+
+    function isValidPM(data) {
+      return data.keys().hasAll(['id', 'assetId', 'trolleyNumber', 'shopCode', 'quarter', 'year', 'status']) &&
+        data.keys().hasOnly(['id', 'assetId', 'trolleyNumber', 'shopCode', 'quarter', 'year', 'scheduledDate', 'completedDate', 'assignedTeam', 'status', 'checklist', 'technicianRemarks', 'verifiedBySupervisor', 'conditionPostPM']) &&
+        isValidId(data.id) &&
+        data.assetId is string && data.assetId.size() > 0 && data.assetId.size() <= 128 &&
+        data.trolleyNumber is string && data.trolleyNumber.size() > 0 && data.trolleyNumber.size() <= 60 &&
+        data.shopCode is string && data.shopCode.size() > 0 && data.shopCode.size() <= 30 &&
+        data.quarter in ['Q1', 'Q2', 'Q3', 'Q4'] &&
+        data.year is number &&
+        data.status in ['Scheduled', 'In Progress', 'Completed', 'Overdue'] &&
+        isOptString(data, 'scheduledDate', 40) &&
+        isOptString(data, 'completedDate', 40) &&
+        isOptString(data, 'assignedTeam', 100) &&
+        isOptBoundedList(data, 'checklist', 25) &&
+        isOptString(data, 'technicianRemarks', 800) &&
+        isOptString(data, 'verifiedBySupervisor', 100) &&
+        (!( 'conditionPostPM' in data ) || data.conditionPostPM in ['excellent', 'good', 'rework_needed']);
+    }
+
+    function isValidManpower(data) {
+      return data.keys().hasAll(['id', 'employeeCode', 'name', 'designation', 'attendanceStatus']) &&
+        data.keys().hasOnly(['id', 'employeeCode', 'name', 'designation', 'primarySkill', 'certifications', 'assignedShop', 'currentShift', 'attendanceStatus', 'activeWorkOrders', 'safetyInducted']) &&
+        isValidId(data.id) &&
+        data.employeeCode is string && data.employeeCode.size() > 0 && data.employeeCode.size() <= 40 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+        data.designation is string && data.designation.size() > 0 && data.designation.size() <= 80 &&
+        data.attendanceStatus in ['Present', 'On Leave', 'Overtime', 'Absent'] &&
+        isOptString(data, 'primarySkill', 60) &&
+        isOptBoundedList(data, 'certifications', 15) &&
+        isOptString(data, 'assignedShop', 30) &&
+        (!( 'currentShift' in data ) || data.currentShift in ['Shift A (Morning)', 'Shift B (Evening)', 'Shift C (Night)', 'General']) &&
+        isOptNumber(data, 'activeWorkOrders') &&
+        isOptBool(data, 'safetyInducted');
+    }
+
+    function isValidMHE(data) {
+      return data.keys().hasAll(['id', 'equipmentCode', 'type', 'shopCode', 'currentStatus']) &&
+        data.keys().hasOnly(['id', 'equipmentCode', 'type', 'model', 'capacityTons', 'shopCode', 'currentStatus', 'lastServiceDate', 'nextServiceDueDate', 'downtimeHours', 'totalRepairs']) &&
+        isValidId(data.id) &&
+        data.equipmentCode is string && data.equipmentCode.size() > 0 && data.equipmentCode.size() <= 40 &&
+        data.type in ['Forklift', 'Tow Truck', 'Hand Pallet Truck (HPT)'] &&
+        data.shopCode is string && data.shopCode.size() > 0 && data.shopCode.size() <= 30 &&
+        data.currentStatus in ['Operational', 'Under Service', 'Breakdown', 'Decommissioned'] &&
+        isOptString(data, 'model', 80) &&
+        isOptNumber(data, 'capacityTons') &&
+        isOptString(data, 'lastServiceDate', 40) &&
+        isOptString(data, 'nextServiceDueDate', 40) &&
+        isOptNumber(data, 'downtimeHours') &&
+        isOptNumber(data, 'totalRepairs');
+    }
+
+    function isValidSafetyIncident(data) {
+      return data.keys().hasAll(['id', 'incidentNumber', 'shopCode', 'severity', 'description', 'status']) &&
+        data.keys().hasOnly(['id', 'incidentNumber', 'shopCode', 'location', 'severity', 'description', 'affectedAssetId', 'trolleyNumber', 'actionTaken', 'status', 'reportedBy', 'reportedAt', 'clearedAt']) &&
+        isValidId(data.id) &&
+        data.incidentNumber is string && data.incidentNumber.size() > 0 && data.incidentNumber.size() <= 40 &&
+        data.shopCode is string && data.shopCode.size() > 0 && data.shopCode.size() <= 30 &&
+        data.severity in ['Low', 'Medium', 'High', 'Critical Unsafe'] &&
+        data.description is string && data.description.size() > 0 && data.description.size() <= 1000 &&
+        data.status in ['Open', 'Investigating', 'Corrective Action', 'Resolved & Cleared'] &&
+        isOptString(data, 'location', 100) &&
+        isOptString(data, 'affectedAssetId', 128) &&
+        isOptString(data, 'trolleyNumber', 60) &&
+        isOptString(data, 'actionTaken', 1000) &&
+        isOptString(data, 'reportedBy', 100) &&
+        isOptString(data, 'reportedAt', 40) &&
+        isOptString(data, 'clearedAt', 40);
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['id', 'recipientUid', 'title', 'message', 'type', 'read', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'recipientUid', 'title', 'message', 'type', 'link', 'read', 'createdAt']) &&
+        isValidId(data.id) &&
+        data.recipientUid is string && data.recipientUid.size() > 0 && data.recipientUid.size() <= 128 &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 120 &&
+        data.message is string && data.message.size() > 0 && data.message.size() <= 500 &&
+        data.type in ['work_order', 'sla_breach', 'pe_approval', 'pm_due', 'safety_lockout'] &&
+        data.read is bool &&
+        data.createdAt is string && data.createdAt.size() <= 40 &&
+        isOptString(data, 'link', 200);
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['id', 'entityType', 'entityId', 'action', 'performedByUid', 'timestamp']) &&
+        data.keys().hasOnly(['id', 'entityType', 'entityId', 'action', 'performedByUid', 'performedByName', 'performedByRole', 'details', 'timestamp']) &&
+        isValidId(data.id) &&
+        data.entityType is string && data.entityType.size() > 0 && data.entityType.size() <= 50 &&
+        data.entityId is string && data.entityId.size() > 0 && data.entityId.size() <= 128 &&
+        data.action is string && data.action.size() > 0 && data.action.size() <= 80 &&
+        data.performedByUid is string && data.performedByUid.size() > 0 && data.performedByUid.size() <= 128 &&
+        data.timestamp is string && data.timestamp.size() <= 40 &&
+        isOptString(data, 'performedByName', 100) &&
+        isOptString(data, 'performedByRole', 50) &&
+        isOptString(data, 'details', 1000);
+    }
+
+    // CONNECTION HEALTH CHECK
+    match /test/{docId} {
+      allow get: if isSignedIn() && isValidId(docId);
+    }
+
+    // USERS COLLECTION (PII Isolated to Owner or Admin)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isPlantAdmin());
+      allow list: if isSignedIn() && (isPlantAdmin() || resource.data.uid == request.auth.uid);
+      allow create: if isVerified() && isValidId(userId) && isValidUser(incoming()) && (
+        isSuperAdmin() ||
+        (request.auth.uid == userId && incoming().uid == request.auth.uid && (incoming().role == 'operator' || isBootstrapAdmin()))
+      );
+      allow update: if isVerified() && isValidId(userId) && isValidUser(incoming()) && (
+        isSuperAdmin() ||
+        (request.auth.uid == userId &&
+         incoming().uid == existing().uid &&
+         incoming().role == existing().role &&
+         incoming().createdAt == existing().createdAt &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'assignedShops', 'department', 'phone', 'updatedAt']))
+      );
+      allow delete: if isSuperAdmin() && isValidId(userId);
+    }
+
+    // SHOPS / PROCESSING LINES MASTER DATA
+    match /shops/{shopId} {
+      allow get: if isSignedIn() && isValidId(shopId);
+      allow list: if isSignedIn() && resource.data.id is string;
+      allow create: if isVerified() && isValidId(shopId) && incoming().id == shopId && isValidShop(incoming());
+      allow update: if isPlantAdmin() && isValidId(shopId) && incoming().id == existing().id && isValidShop(incoming());
+      allow delete: if isSuperAdmin() && isValidId(shopId);
+    }
+
+    // ASSET REGISTRY & QR CODES
+    match /assets/{assetId} {
+      allow get: if isSignedIn() && isValidId(assetId);
+      allow list: if isSignedIn() && resource.data.id is string;
+      allow create: if isVerified() && isValidId(assetId) && incoming().id == assetId && isValidAsset(incoming());
+      allow update: if isVerified() && isValidId(assetId) && isValidAsset(incoming()) && (
+        isPlantAdmin() ||
+        (incoming().id == existing().id &&
+         incoming().createdAt == existing().createdAt &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'category', 'trolleyType', 'shopCode', 'location', 'partNumber', 'dimensions', 'loadCapacityKg', 'condition', 'operationalStatus', 'safetyStatus', 'lastMaintenanceDate', 'nextMaintenanceDueDate', 'maintenanceQuarter', 'updatedAt']))
+      );
+      allow delete: if isPlantAdmin() && isValidId(assetId);
+    }
+
+    // WORK ORDERS (Breakdowns & Maintenance Jobs)
+    match /work_orders/{workOrderId} {
+      allow get: if isSignedIn() && isValidId(workOrderId);
+      allow list: if isSignedIn() && resource.data.id is string;
+      allow create: if isVerified() && isValidId(workOrderId) && incoming().id == workOrderId && isValidWorkOrder(incoming()) && incoming().requesterUid == request.auth.uid;
+      allow update: if isVerified() && isValidId(workOrderId) && isValidWorkOrder(incoming()) && (
+        isPlantAdmin() ||
+        (incoming().id == existing().id &&
+         incoming().requesterUid == existing().requesterUid &&
+         incoming().createdAt == existing().createdAt &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'priority', 'location', 'scheduledDate', 'startedAt', 'completedAt', 'turnaroundDays', 'assignedTechnicianUids', 'assignedTechnicianNames', 'peApproved', 'peApprovalNotes', 'qualityInspectionPassed', 'jobDescription', 'failureType', 'updatedAt']))
+      );
+      allow delete: if isPlantAdmin() && isValidId(workOrderId);
+    }
+
+    // WORK ORDER PROGRESS LOGS (Append-Only Immutable History)
+    match /work_order_logs/{logId} {
+      allow get: if isSignedIn() && isValidId(logId);
+      allow list: if isSignedIn() && resource.data.id is string;
+      allow create: if isVerified() && isValidId(logId) && incoming().id == logId && isValidWorkOrderLog(incoming()) && incoming().performedByUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // PREVENTIVE MAINTENANCE CYCLES
+    match /preventive_maintenance/{pmId} {
+      allow get: if isSignedIn() && isValidId(pmId);
+      allow list: if isSignedIn() && resource.data.id is string;
+      allow create: if isVerified() && isValidId(pmId) && incoming().id == pmId && isValidPM(incoming());
+      allow update: if isVerified() && isValidId(pmId) && isValidPM(incoming()) && (
+        isPlantAdmin() ||
+        (incoming().id == existing().id &&
+         incoming().assetId == existing().assetId &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'scheduledDate', 'completedDate', 'assignedTeam', 'checklist', 'technicianRemarks', 'verifiedBySupervisor', 'conditionPostPM']))
+      );
+      allow delete: if isPlantAdmin() && isValidId(pmId);
+    }
+
+    // MANPOWER ROSTER
+    match /manpower/{manpowerId} {
+      allow get: if isSignedIn() && isValidId(manpowerId);
+      allow list: if isSignedIn() && resource.data.id is string;
+      allow create: if isVerified() && isValidId(manpowerId) && incoming().id == manpowerId && isValidManpower(incoming());
+      allow update: if isVerified() && isValidId(manpowerId) && isValidManpower(incoming()) && (
+        isPlantAdmin() ||
+        (incoming().id == existing().id &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['assignedShop', 'currentShift', 'attendanceStatus', 'activeWorkOrders', 'safetyInducted', 'certifications']))
+      );
+      allow delete: if isPlantAdmin() && isValidId(manpowerId);
+    }
+
+    // MHE EQUIPMENT
+    match /mhe_equipment/{equipmentId} {
+      allow get: if isSignedIn() && isValidId(equipmentId);
+      allow list: if isSignedIn() && resource.data.id is string;
+      allow create: if isVerified() && isValidId(equipmentId) && incoming().id == equipmentId && isValidMHE(incoming());
+      allow update: if isVerified() && isValidId(equipmentId) && isValidMHE(incoming()) && (
+        isPlantAdmin() ||
+        (incoming().id == existing().id &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['currentStatus', 'lastServiceDate', 'nextServiceDueDate', 'downtimeHours', 'totalRepairs', 'shopCode']))
+      );
+      allow delete: if isPlantAdmin() && isValidId(equipmentId);
+    }
+
+    // SAFETY INCIDENTS & LOCKOUTS
+    match /safety_incidents/{incidentId} {
+      allow get: if isSignedIn() && isValidId(incidentId);
+      allow list: if isSignedIn() && resource.data.id is string;
+      allow create: if isVerified() && isValidId(incidentId) && incoming().id == incidentId && isValidSafetyIncident(incoming());
+      allow update: if isVerified() && isValidId(incidentId) && isValidSafetyIncident(incoming()) && (
+        isPlantAdmin() ||
+        (incoming().id == existing().id &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'actionTaken', 'clearedAt', 'severity']))
+      );
+      allow delete: if isPlantAdmin() && isValidId(incidentId);
+    }
+
+    // NOTIFICATIONS
+    match /notifications/{notificationId} {
+      allow get: if isSignedIn() && isValidId(notificationId) && (isPlantAdmin() || resource.data.recipientUid == request.auth.uid || resource.data.recipientUid == 'all');
+      allow list: if isSignedIn() && (isPlantAdmin() || resource.data.recipientUid == request.auth.uid || resource.data.recipientUid == 'all');
+      allow create: if isVerified() && isValidId(notificationId) && incoming().id == notificationId && isValidNotification(incoming());
+      allow update: if isVerified() && isValidId(notificationId) && isValidNotification(incoming()) && (
+        isPlantAdmin() ||
+        ((existing().recipientUid == request.auth.uid || existing().recipientUid == 'all') && incoming().diff(existing()).affectedKeys().hasOnly(['read']))
+      );
+      allow delete: if isSignedIn() && isValidId(notificationId) && (isPlantAdmin() || resource.data.recipientUid == request.auth.uid);
+    }
+
+    // AUDIT LOGS - Strictly Immutable Trail
+    match /audit_logs/{auditId} {
+      allow get: if isSignedIn() && isValidId(auditId);
+      allow list: if isSignedIn() && resource.data.id is string;
+      allow create: if isVerified() && isValidId(auditId) && incoming().id == auditId && isValidAuditLog(incoming()) && incoming().performedByUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+  }
+}

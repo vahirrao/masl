@@ -1,0 +1,10 @@
+{
+  "name": "FAB-CONTROL PRO",
+  "description": "Enterprise Fabrication & Industrial Maintenance Management System for Technova Enterprises at Mahindra & Mahindra Chakan Facility",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
